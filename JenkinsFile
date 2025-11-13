@@ -1,7 +1,7 @@
 pipeline {
     agent {
         docker {
-            image 'maven:3.9.4-eclipse-temurin-17' // official Maven + JDK image
+            image 'maven:3.9.4-eclipse-temurin-17' // Official Maven + JDK image
             args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
         }
     }
@@ -10,26 +10,20 @@ pipeline {
         SONAR_URL = "https://sonarcloud.io"
         SONAR_ORG = "harbey-tech"          // SonarCloud organization key
         SONAR_PROJECT_KEY = "harbey-tech"  // SonarCloud project key
-        DOCKER_REGISTRY = "docker.io"
-        DOCKER_IMAGE_NAME = "Harbey-tech/spring-boot-app"
-        GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
-        GIT_USER_NAME = "Harbey-tech"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', 
-                    url: 'https://github.com/Harbey-tech/java-maven-sonar-argocd-helm-k8s.git', 
-                    credentialsId: 'github' // Jenkins credential with PAT
+                git branch: 'main', url: 'https://github.com/Harbey-tech/JENKINS-END-TO-END-CICD-PROJECT.git'
             }
         }
 
         stage('Build and Test') {
             steps {
                 sh '''
-                    cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                    cd spring-boot-app
                     mvn clean package
                 '''
             }
@@ -39,12 +33,12 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_AUTH_TOKEN')]) {
                     sh '''
-                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                        cd spring-boot-app
                         mvn sonar:sonar \
-                            -Dsonar.login=$SONAR_AUTH_TOKEN \
-                            -Dsonar.host.url=${SONAR_URL} \
-                            -Dsonar.organization=${SONAR_ORG} \
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY}
+                          -Dsonar.login=$SONAR_AUTH_TOKEN \
+                          -Dsonar.host.url=${SONAR_URL} \
+                          -Dsonar.organization=${SONAR_ORG} \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY}
                     '''
                 }
             }
@@ -52,17 +46,16 @@ pipeline {
 
         stage('Build and Push Docker Image') {
             environment {
-                DOCKER_IMAGE = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
-                REGISTRY_CREDENTIALS = credentials('docker-cred') // Docker Hub credentials
+                DOCKER_IMAGE = "harbey-tech/spring-boot-app:${BUILD_NUMBER}"
             }
             steps {
                 script {
                     sh '''
-                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                        cd spring-boot-app
                         docker build -t ${DOCKER_IMAGE} .
                     '''
                     def dockerImage = docker.image("${DOCKER_IMAGE}")
-                    docker.withRegistry("https://${DOCKER_REGISTRY}", "docker-cred") {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
                         dockerImage.push()
                     }
                 }
@@ -70,31 +63,22 @@ pipeline {
         }
 
         stage('Update Deployment File') {
+            environment {
+                GIT_REPO_NAME = "JENKINS-END-TO-END-CICD-PROJECT"
+                GIT_USER_NAME = "Harbey-tech"
+            }
             steps {
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
                     sh '''
-                        git config user.email "Harbey2965@gmail.com"
-                        git config user.name "${GIT_USER_NAME}"
-                        sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                        git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        git config user.email "harbey2965@gmail.com"
+                        git config user.name "Harbey-tech"
+                        sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
+                        git add spring-boot-app-manifests/deployment.yml
                         git commit -m "Update deployment image to version ${BUILD_NUMBER}"
                         git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
                     '''
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            echo "Cleaning workspace..."
-            cleanWs()
-        }
-        success {
-            echo "Pipeline completed successfully!"
-        }
-        failure {
-            echo "Pipeline failed. Check logs for details."
         }
     }
 }
